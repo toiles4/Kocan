@@ -5263,3 +5263,372 @@ Tab5Automation:AddToggle("AutoDestroyEvent", {
         end)
     end,
 })
+--==================================================
+-- TAB 5 - AUTOMATION ADDONS
+-- Không tạo Tab mới
+-- Dùng Tab5Automation có sẵn
+--==================================================
+
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+--==================================================
+-- HELPERS
+--==================================================
+
+local function GetCharacterRoot()
+    local Character = LocalPlayer.Character
+    return Character and Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function GetArenaParts()
+    local Result = {}
+
+    local WorldMap = workspace:FindFirstChild("World Map")
+    local SecretBossArea =
+        WorldMap
+        and WorldMap:FindFirstChild("SecretBossArea")
+
+    if not SecretBossArea then
+        return Result
+    end
+
+    -- Tìm mọi object có chữ Arena
+    for _, Object in ipairs(SecretBossArea:GetDescendants()) do
+        if string.find(Object.Name:lower(), "arena") then
+
+            if Object:IsA("BasePart") then
+                table.insert(Result, Object)
+
+            elseif Object:IsA("Model") then
+                local Root =
+                    Object.PrimaryPart
+                    or Object:FindFirstChildWhichIsA("BasePart")
+
+                if Root then
+                    table.insert(Result, Root)
+                end
+            end
+        end
+    end
+
+    return Result
+end
+
+local function IsZajaOrDestroyerAlive()
+    local WorldMobs = workspace:FindFirstChild("World Mobs")
+    local EventMobs =
+        WorldMobs
+        and WorldMobs:FindFirstChild("Event Mobs")
+
+    if not EventMobs then
+        return false
+    end
+
+    -- Zaja
+    if EventMobs:FindFirstChild("Zaja") then
+        return true
+    end
+
+    -- Destroyer
+    if EventMobs:FindFirstChild("Destroyer") then
+        return true
+    end
+
+    -- Một số game có thể đặt boss ở folder khác
+    for _, Object in ipairs(EventMobs:GetChildren()) do
+        local Name = Object.Name:lower()
+
+        if Name == "zaja"
+            or Name == "destroyer"
+            or string.find(Name, "destroyer") then
+            return true
+        end
+    end
+
+    return false
+end
+
+--==================================================
+-- Z A J A   D E S T R O Y S
+--==================================================
+
+local ZajaDestroyMode = "Tween"
+local ZajaDestroyRunning = false
+local ZajaDestroyTween
+
+Tab5Automation:AddDropdown("ZajaDestroyMode", {
+    Values = {
+        "Tween",
+        "Teleport",
+    },
+
+    Default = "Tween",
+    Multi = false,
+    Text = "Zaja Destorys Mode",
+
+    Callback = function(Value)
+        ZajaDestroyMode = Value
+    end,
+})
+
+Tab5Automation:AddToggle("ZajaDestroy", {
+    Text = "Zaja Destorys [Collection]",
+    Default = false,
+
+    Callback = function(Value)
+
+        ZajaDestroyRunning = Value
+
+        if not Value then
+
+            if ZajaDestroyTween then
+                pcall(function()
+                    ZajaDestroyTween:Cancel()
+                end)
+
+                ZajaDestroyTween = nil
+            end
+
+            return
+        end
+
+        task.spawn(function()
+
+            while ZajaDestroyRunning
+                and Library.Toggles.ZajaDestroy.Value do
+
+                -- Nếu Zaja hoặc Destroyer xuất hiện
+                -- thì DỪNG di chuyển
+                if IsZajaOrDestroyerAlive() then
+                    task.wait(0.25)
+                    continue
+                end
+
+                local Root = GetCharacterRoot()
+
+                if Root then
+
+                    local Arenas = GetArenaParts()
+
+                    for _, Arena in ipairs(Arenas) do
+
+                        if not ZajaDestroyRunning
+                            or not Library.Toggles.ZajaDestroy.Value then
+                            break
+                        end
+
+                        -- Boss xuất hiện giữa chừng
+                        if IsZajaOrDestroyerAlive() then
+                            break
+                        end
+
+                        if Arena and Arena.Parent then
+
+                            local TargetCFrame =
+                                Arena.CFrame
+                                + Vector3.new(0, 3, 0)
+
+                            --==========================================
+                            -- TELEPORT
+                            --==========================================
+
+                            if ZajaDestroyMode == "Teleport" then
+
+                                Root.CFrame = TargetCFrame
+
+                                task.wait(10)
+
+                            --==========================================
+                            -- TWEEN
+                            --==========================================
+
+                            elseif ZajaDestroyMode == "Tween" then
+
+                                local Distance =
+                                    (TargetCFrame.Position
+                                    - Root.Position).Magnitude
+
+                                -- Speed 300
+                                local Time =
+                                    math.max(Distance / 300, 0.05)
+
+                                ZajaDestroyTween =
+                                    TweenService:Create(
+                                        Root,
+                                        TweenInfo.new(
+                                            Time,
+                                            Enum.EasingStyle.Linear
+                                        ),
+                                        {
+                                            CFrame = TargetCFrame
+                                        }
+                                    )
+
+                                ZajaDestroyTween:Play()
+                                ZajaDestroyTween.Completed:Wait()
+
+                                ZajaDestroyTween = nil
+
+                                -- Đổi arena mỗi 10 giây
+                                task.wait(10)
+                            end
+                        end
+                    end
+                end
+
+                task.wait(0.1)
+            end
+        end)
+    end,
+})
+
+--==================================================
+-- AUTO COLLECT V2
+--==================================================
+
+Tab5Automation:AddToggle("AutoCollectV2", {
+    Text = "Auto Collect v2",
+    Default = false,
+
+    Callback = function(Value)
+
+        if not Value then
+            return
+        end
+
+        task.spawn(function()
+
+            while Library.Toggles.AutoCollectV2.Value do
+
+                local Root = GetCharacterRoot()
+
+                if Root then
+
+                    for _, Object in ipairs(workspace:GetDescendants()) do
+
+                        if not Library.Toggles.AutoCollectV2.Value then
+                            break
+                        end
+
+                        if Object:IsA("ProximityPrompt") then
+
+                            local Parent = Object.Parent
+
+                            local Part =
+                                Parent:IsA("BasePart")
+                                and Parent
+                                or Parent:FindFirstChildWhichIsA("BasePart")
+
+                            if Part then
+
+                                local Distance =
+                                    (Part.Position - Root.Position).Magnitude
+
+                                if Distance <= 30 then
+                                    pcall(function()
+                                        fireproximityprompt(Object)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+
+                task.wait(1)
+            end
+        end)
+    end,
+})
+
+--==================================================
+-- ANTI LAG
+--==================================================
+
+local AntiLagConnection
+
+Tab5Automation:AddToggle("AntiLag", {
+    Text = "Anti Lag",
+    Default = false,
+
+    Callback = function(Value)
+
+        if AntiLagConnection then
+            AntiLagConnection:Disconnect()
+            AntiLagConnection = nil
+        end
+
+        if not Value then
+            return
+        end
+
+        local function Optimize(Object)
+
+            pcall(function()
+
+                if Object:IsA("ParticleEmitter")
+                    or Object:IsA("Trail")
+                    or Object:IsA("Beam")
+                    or Object:IsA("Smoke")
+                    or Object:IsA("Fire")
+                    or Object:IsA("Sparkles") then
+
+                    Object.Enabled = false
+                end
+
+                if Object:IsA("BasePart") then
+                    Object.CastShadow = false
+                end
+            end)
+        end
+
+        for _, Object in ipairs(workspace:GetDescendants()) do
+            Optimize(Object)
+        end
+
+        AntiLagConnection =
+            workspace.DescendantAdded:Connect(function(Object)
+
+                if Library.Toggles.AntiLag.Value then
+                    Optimize(Object)
+                end
+            end)
+    end,
+})
+
+--==================================================
+-- AUTO SHOP
+--==================================================
+
+Tab5Automation:AddToggle("AutoShop", {
+    Text = "Auto Shop",
+    Default = false,
+
+    Callback = function(Value)
+
+        if not Value then
+            return
+        end
+
+        task.spawn(function()
+
+            while Library.Toggles.AutoShop.Value do
+
+                -- Chờ 3 phút giữa mỗi lần mở/kiểm tra shop
+                task.wait(180)
+
+                if not Library.Toggles.AutoShop.Value then
+                    break
+                end
+
+                -- Hook chỗ này nếu game của ông có remote Shop riêng.
+                Library:Notify({
+                    Title = "Auto Shop",
+                    Description = "Đã tới thời gian Shop.",
+                    Time = 3
+                })
+            end
+        end)
+    end,
+})
